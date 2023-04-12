@@ -1,25 +1,18 @@
-import json
 import os
+import sys
 
-import emoji
 import requests
 import tweepy
 
-LOC = os.path.abspath(os.path.join(__file__, "../../../auth_secrets.json"))
-with open(LOC, "r", encoding="utf-8") as auth_file:
-    KEYS = json.load(auth_file)
-
 TWITTER_API = tweepy.Client(
-    consumer_key=KEYS["Twitter_ApplSec"]["api_key"],
-    consumer_secret=KEYS["Twitter_ApplSec"]["api_key_secret"],
-    access_token=KEYS["Twitter_ApplSec"]["access_token"],
-    access_token_secret=KEYS["Twitter_ApplSec"]["access_token_secret"],
+    consumer_key=os.environ.get("TWITTER_TEST_API_KEY"),
+    consumer_secret=os.environ.get("TWITTER_TEST_API_KEY_SECRET"),
+    access_token=os.environ.get("TWITTER_TEST_ACCESS_TOKEN"),
+    access_token_secret=os.environ.get("TWITTER_TEST_ACCESS_TOKEN_SECRET"),
     return_type=type(dict),
 )
 
-MASTODON_KEYS = {
-    "access_token": ("Bearer " + KEYS["Mastodon_ApplSec"]["access_token"]),
-}
+MASTODON_KEY = "Bearer " + os.environ.get("MASTODON_ACCESS_TOKEN", "")
 
 
 def arrange_post(results: list, MAX_CHAR: int) -> list:
@@ -37,7 +30,7 @@ def arrange_post(results: list, MAX_CHAR: int) -> list:
     arranged = [""]
 
     for item in results:
-        if len(emoji.emojize(arranged[-1] + item, language="alias")) < MAX_CHAR:
+        if len(arranged[-1] + item) < MAX_CHAR:
             arranged[-1] += item
         else:
             arranged.append(item)
@@ -57,7 +50,7 @@ def tweet(results: list) -> None:
         if posts_list.index(text) == 0:
             # individual post or start of a thread
             response = TWITTER_API.create_tweet(
-                text=emoji.emojize(text, language="alias"),
+                text=text,
             )
 
             post_ids.append(getattr(response, "data")["id"])
@@ -65,7 +58,7 @@ def tweet(results: list) -> None:
             # other posts in a thread
             response = TWITTER_API.create_tweet(
                 in_reply_to_tweet_id=post_ids[-1],
-                text=emoji.emojize(text, language="alias"),
+                text=text,
             )
 
             post_ids.append(getattr(response, "data")["id"])
@@ -75,7 +68,9 @@ def toot(results: list) -> None:
     """Handle posting to Mastodon."""
     MAX_CHAR = 500
     API_URL = "https://mastodon.social/api/v1/statuses"
-    # API_URL = "https://mas.to/api/v1/statuses"  # TEST ACCOUNT
+    # API_URL = "https://mas.to/api/v1/statuses"
+
+    results.append("\n\n#apple #cybersecurity #infosec #security #ios")
 
     posts_list = arrange_post(results, MAX_CHAR)
 
@@ -86,9 +81,9 @@ def toot(results: list) -> None:
             # individual post or start of a thread
             response = requests.post(
                 API_URL,
-                json={"status": emoji.emojize(text, language="alias")},
-                headers={"Authorization": MASTODON_KEYS["access_token"]},
-                timeout=60
+                json={"status": text},
+                headers={"Authorization": MASTODON_KEY},
+                timeout=60,
             )
 
             post_ids.append(response.json()["id"])
@@ -97,11 +92,11 @@ def toot(results: list) -> None:
             response = requests.post(
                 API_URL,
                 json={
-                    "status": emoji.emojize(text, language="alias"),
+                    "status": text,
                     "in_reply_to_id": post_ids[-1],
                 },
-                headers={"Authorization": MASTODON_KEYS["access_token"]},
-                timeout=60
+                headers={"Authorization": MASTODON_KEY},
+                timeout=60,
             )
 
             post_ids.append(response.json()["id"])
@@ -112,11 +107,13 @@ def post(results: list) -> None:
         return
 
     try:
-        tweet(results)
+        toot(list(results))
     except Exception as e:
-        print("TWITTER FAILED TO POST: " + str(results) + "\n" + str(e) + "\n")
+        print("ERROR: Mastodon failed to post\n" + str(results) + "\n" + str(e) + "\n")
+        sys.exit(1)
 
     try:
-        toot(results)
+        tweet(list(results))
     except Exception as e:
-        print("MASTODON FAILED TO POST: " + str(results) + "\n" + str(e) + "\n")
+        print("ERROR: Twitter failed to post\n" + str(results) + "\n" + str(e) + "\n")
+        sys.exit(1)

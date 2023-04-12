@@ -1,0 +1,72 @@
+name: ApplSec bot
+
+on:
+  schedule:
+    # every full hour
+    - cron: "0 * * * *"
+    # between 4 and 8 pm UTC on weekdays run every 15 minutes as that is the time when updates usually get released 
+    - cron: "*/15 16-20 * * 1-5"
+  workflow_dispatch:
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v3
+        with:
+          path: main
+
+      - name: Checkout posted_data_json
+        uses: actions/checkout@v3
+        with:
+          ref: posted_data_json
+          path: branch
+
+      - name: Set up posted_data.json
+        run: |
+          cp branch/posted_data.json main/src/
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          pip install -r main/requirements.txt
+
+      - name: Set Timezone to CET/CEST
+        run: |
+          sudo timedatectl set-timezone "Europe/Berlin"
+
+      - name: Run ApplSec bot
+        env:
+          TWITTER_API_KEY: ${{ secrets.TWITTER_API_KEY }}
+          TWITTER_API_KEY_SECRET: ${{ secrets.TWITTER_API_KEY_SECRET }}
+          TWITTER_ACCESS_TOKEN: ${{ secrets.TWITTER_ACCESS_TOKEN }}
+          TWITTER_ACCESS_TOKEN_SECRET: ${{ secrets.TWITTER_ACCESS_TOKEN_SECRET }}
+
+          TWITTER_TEST_API_KEY: ${{ secrets.TWITTER_TEST_API_KEY }}
+          TWITTER_TEST_API_KEY_SECRET: ${{ secrets.TWITTER_TEST_API_KEY_SECRET }}
+          TWITTER_TEST_ACCESS_TOKEN: ${{ secrets.TWITTER_TEST_ACCESS_TOKEN }}
+          TWITTER_TEST_ACCESS_TOKEN_SECRET: ${{ secrets.TWITTER_TEST_ACCESS_TOKEN_SECRET }}
+
+          MASTODON_ACCESS_TOKEN: ${{ secrets.MASTODON_ACCESS_TOKEN }}
+
+          MASTODON_TEST_ACCESS_TOKEN: ${{ secrets.MASTODON_TEST_ACCESS_TOKEN }}
+        run: python main/src/main.py
+
+      - name: Save posted_data.json
+        if: always()
+        run: |
+          cd branch/
+          cp ../main/src/posted_data.json .
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add .
+          git diff --staged --quiet || git commit -m "$(date +'%d-%m-%Y %I:%M:%S %p')" && git push
