@@ -151,7 +151,7 @@ class Release:
         name = name.replace("\n", "")
 
         # "no details yet" releases might have this bracket alongside of their name
-        name = name.replace("(details available soon)", "").strip()
+        name = re.sub(r"(?i)\(details available soon\.?\)", "", name).strip()
 
         # "iOS 15.3 and iPadOS 15.3" -> "iOS and iPadOS 15.3"
         if "iOS" in name and "iPadOS" in name:
@@ -221,12 +221,13 @@ class Release:
                 # if there isn't any zero days, end early
                 return zero_days
 
-        entries = re.findall(r"(?i)(?<=<strong>).*?(?=<strong>|<\/div)", sec_content_html)
+        entries = re.findall(r"(?i)(?<=<strong>).*?(?=<strong>|<\/div>)", sec_content_html)
+        entries += re.findall(r"(?i)(?<=<b>).*?(?=<b>|<div id=\"disclaimer\")", sec_content_html)
 
         for entry in entries:
             if "in the wild" in entry or "actively exploited" in entry:
                 cve = re.findall(r"(?i)CVE-[0-9]{4}-[0-9]+", entry)[0]
-                zero_days[cve] = re.findall(r"(?i).+?(?=<\/strong>)", entry)[0]
+                zero_days[cve] = re.findall(r"(?i).+?(?=<\/strong>|<\/b>)", entry)[0]
 
         return zero_days
 
